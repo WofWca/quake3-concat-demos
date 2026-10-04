@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join Quake 3 demos: merge sequential .dm_68 files into one, in your browser</title>
+<meta name="description" content="Free online tool to concatenate Quake III Arena demos: join consecutive .dm_68 recordings of the same game into a single seamless demo file. Runs in your browser, nothing is uploaded.">
+<style>
+	body { font: 16px/1.5 system-ui, sans-serif; max-width: 40em; margin: 2em auto; padding: 0 1em; color-scheme: light dark; }
+	li button { margin-left: .5em; }
+</style>
+<h1>Concatenate Quake III Arena demos into one file</h1>
+<p>
+	Concatenate (merge, combine) Quake 3 demos: pick the parts of a recording
+	(<code>.dm_68</code> and the like), put them in playback order, get one demo.
+	Parts of the same game recorded back to back are joined seamlessly;
+	anything else is joined with a level reload in between. Nothing is uploaded.
+	This might be useful if you did `\stoprecord` with `\set cl_autoRecordDemo 1`.
+</p>
+<p><label>Demo files: <input type="file" id="pick" multiple></label></p>
+<ol id="list"></ol>
+<p><button id="go" disabled>Concatenate</button> <a id="dl" hidden>Download</a></p>
+<pre id="log" role="status"></pre>
+<script src="concat.js"></script>
+<script>
+	const $ = id => document.getElementById(id);
+	const ext = f => f.name.split('.').pop().toLowerCase();
+	let files = [];
+
+	function render() {
+		$('list').replaceChildren(...files.map((f, i) => {
+			const li = document.createElement('li');
+			li.textContent = f.name;
+			if (i) {
+				const up = document.createElement('button');
+				up.textContent = '↑';
+				up.ariaLabel = `Move ${f.name} up`;
+				up.onclick = () => { files.splice(i - 1, 2, f, files[i - 1]); render(); };
+				li.append(up);
+			}
+			return li;
+		}));
+		$('go').disabled = files.length < 2;
+		$('dl').hidden = true;
+		$('log').textContent = '';
+	}
+
+	$('pick').onchange = e => {
+		// default demo names (demo-YYYYMMDD-HHMMSS) sort chronologically
+		files = [...e.target.files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+		render();
+	};
+
+	$('go').onclick = async () => {
+		try {
+			if (files.some(f => ext(f) !== ext(files[0]))) throw new Error('All files must have the same extension (protocol).');
+			const { data, joins } = concat(await Promise.all(files.map(async f => new Uint8Array(await f.arrayBuffer()))));
+			$('log').textContent = joins.map((j, i) => `${files[i].name} + ${files[i + 1].name}: ${j}`).join('\n');
+			$('dl').href = URL.createObjectURL(new Blob([data]));
+			$('dl').download = files[0].name.replace(/(\.[^.]+)?$/, '-concat$1');
+			$('dl').textContent = `Download ${$('dl').download}`;
+			$('dl').hidden = false;
+		} catch (err) {
+			$('log').textContent = err.message;
+		}
+	};
+</script>
+</html>
